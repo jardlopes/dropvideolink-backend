@@ -15,9 +15,9 @@ def extract_video():
     if not video_url:
         return jsonify({'success': False, 'error': 'URL não fornecida'}), 400
 
-    # Cria um diretório temporário seguro para baixar o vídeo
-    temp_dir = tempfile.mkdtemp()
-    output_template = os.path.join(temp_dir, '%(id)s.%(ext)s')
+    # Cria um diretório temporário para o download
+    tmp_dir = tempfile.mkdtemp()
+    output_template = os.path.join(tmp_dir, '%(id)s.%(ext)s')
 
     ydl_opts = {
         'format': 'best',
@@ -30,11 +30,14 @@ def extract_video():
             info = ydl.extract_info(video_url, download=True)
             filename = ydl.prepare_filename(info)
             
-            # Retorna o arquivo binário real para o frontend
+            if not os.path.exists(filename):
+                return jsonify({'success': False, 'error': 'Arquivo não gerado'}), 500
+
+            # Envia o arquivo binário real para o frontend
             return send_file(
                 filename,
                 as_attachment=True,
-                download_name=f"{info.get('title', 'video')}.mp4"
+                download_name=f"{info.get('title', 'video').replace('/', '_')}.mp4"
             )
     except Exception as e:
         print(f"Erro no download: {str(e)}")
