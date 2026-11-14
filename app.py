@@ -55,7 +55,10 @@ else:
         "best": "b[ext=mp4]/b",
     }
 
-EXTENSOES = (".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".flv", ".3gp")
+# Áudio (MP3 320kbps): exige FFmpeg para converter
+QUALIDADES["mp3"] = "ba/b"
+
+EXTENSOES = (".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".flv", ".3gp", ".mp3")
 
 
 def validar_url(url):
@@ -134,7 +137,13 @@ def opcoes_download(pasta, qualidade):
         "file_access_retries": 3,
         "max_filesize": MAX_DOWNLOAD_SIZE,
     })
-    if TEM_FFMPEG:
+    if qualidade == "mp3":
+        opcoes["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "320",
+        }]
+    elif TEM_FFMPEG:
         opcoes["merge_output_format"] = "mp4"
     return opcoes
 
@@ -232,6 +241,12 @@ def baixar():
     if qualidade not in QUALIDADES:
         return jsonify({"success": False, "error": "Qualidade não reconhecida."}), 400
 
+    if qualidade == "mp3" and not TEM_FFMPEG:
+        return jsonify({
+            "success": False,
+            "error": "Conversão para MP3 indisponível: o servidor está sem FFmpeg.",
+        }), 400
+
     token = str(uuid.uuid4())
     pasta = os.path.join(DOWNLOAD_ROOT, token)
     os.makedirs(pasta, exist_ok=True)
@@ -285,7 +300,11 @@ def enviar_arquivo(token):
         arquivo,
         as_attachment=True,
         download_name=os.path.basename(arquivo),
-        mimetype="video/mp4" if arquivo.lower().endswith(".mp4") else "application/octet-stream",
+        mimetype=(
+            "video/mp4" if arquivo.lower().endswith(".mp4")
+            else "audio/mpeg" if arquivo.lower().endswith(".mp3")
+            else "application/octet-stream"
+        ),
     )
 
     response.call_on_close(lambda: shutil.rmtree(pasta, ignore_errors=True))
