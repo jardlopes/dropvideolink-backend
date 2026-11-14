@@ -1,56 +1,43 @@
-from flask import Flask, request, jsonify
+import os
+import tempfile
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import yt_dlp
 
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/')
-def home():
-    return "DropVideoLink Backend Operacional!"
-
 @app.route('/api/extract', methods=['POST'])
 def extract_video():
     data = request.get_json()
-    url = data.get('url')
+    video_url = data.get('url')
     
-    if not url:
-        return jsonify({'error': 'URL não informada'}), 400
+    if not video_url:
+        return jsonify({'success': False, 'error': 'URL não fornecida'}), 400
+
+    # Cria um diretório temporário seguro para baixar o vídeo
+    temp_dir = tempfile.mkdtemp()
+    output_template = os.path.join(temp_dir, '%(id)s.%(ext)s')
 
     ydl_opts = {
         'format': 'best',
-        'quiet': True,
-        'no_warnings': True,
+        'outtmpl': output_template,
+        'noplaylist': True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extrai os dados do vídeo sem baixar o arquivo inteiro para o servidor (economiza memória)
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(video_url, download=True)
+            filename = ydl.prepare_filename(info)
             
-            # Pega o link direto de streaming/download do vídeo ou o melhor formato
-            formats = info.get('formats', [])
-            direct_url = None
-            
-            # Procura um formato que tenha vídeo e áudio juntos ou o melhor disponível
-            for f in formats:
-                if f.get('url') and f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                    direct_url = f.get('url')
-                    break
-            
-            if not direct_url and formats:
-                direct_url = formats[0].get('url')
-
-            return jsonify({
-                'success': True,
-                'title': info.get('title', 'Vídeo sem título'),
-                'duration': info.get('duration_string', '00:00'),
-                'thumbnail': info.get('thumbnail', ''),
-                'download_url': direct_url,
-                'ext': info.get('ext', 'mp4')
-            })
-            
+            # Retorna o arquivo binário real para o frontend
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=f"{info.get('title', 'video')}.mp4"
+            )
     except Exception as e:
+        print(f"Erro no download: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
